@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { exportTablaExcel } from "../api/client";
 import type { CeldaExport } from "../api/client";
+import OpcionesBuscables from "./OpcionesBuscables";
 
 export interface Column<T> {
   key: string;
@@ -222,16 +223,11 @@ export default function DataTable<T>({
                   <details className="multi">
                     <summary>{sel.length === 0 ? "(todas)" : `${sel.length} sel.`}</summary>
                     <div className="multi-panel">
-                      {(opcionesPorColumna[col.key] ?? []).map((v) => (
-                        <label key={v} className="multi-op">
-                          <input
-                            type="checkbox"
-                            checked={sel.includes(v)}
-                            onChange={() => toggleMulti(col.key, v)}
-                          />
-                          {v}
-                        </label>
-                      ))}
+                      <OpcionesBuscables
+                        opciones={opcionesPorColumna[col.key] ?? []}
+                        seleccion={new Set(sel)}
+                        onToggle={(v) => toggleMulti(col.key, v)}
+                      />
                     </div>
                   </details>
                 </div>

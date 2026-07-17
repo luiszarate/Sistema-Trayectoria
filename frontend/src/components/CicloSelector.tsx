@@ -1,4 +1,5 @@
 import { useState } from "react";
+import OpcionesBuscables from "./OpcionesBuscables";
 
 interface CicloSelectorProps {
   /** Ciclos disponibles, en orden cronológico (más antiguo primero). */
@@ -56,12 +57,12 @@ export default function CicloSelector({ ciclos, seleccionados, onChange }: Ciclo
               </button>
             </span>
           </div>
-          {enOrden.map((c) => (
-            <label key={c} className="multi-op">
-              <input type="checkbox" checked={seleccion.has(c)} onChange={() => toggle(c)} />
-              {c}
-            </label>
-          ))}
+          <OpcionesBuscables
+            opciones={enOrden}
+            seleccion={seleccion}
+            onToggle={toggle}
+            placeholder="Buscar ciclo…"
+          />
         </div>
       </details>
     </div>

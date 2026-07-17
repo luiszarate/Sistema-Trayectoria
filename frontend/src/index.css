@@ -323,14 +323,29 @@ details.multi > summary::after {
   top: 100%;
   left: 0;
   margin-top: 2px;
-  max-height: 260px;
-  overflow: auto;
   background: white;
   border: 1px solid var(--gris-borde);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   padding: 0.35rem;
   min-width: 12rem;
+}
+
+.multi-buscar {
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+/* Solo la lista hace scroll; la búsqueda (y las acciones de ciclos) quedan fijas. */
+.multi-lista {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.multi-vacio {
+  padding: 0.4rem 0.3rem;
+  color: #777;
+  font-size: 0.8rem;
 }
 
 .multi-op {
