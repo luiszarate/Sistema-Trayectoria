@@ -86,6 +86,34 @@ def test_avance_se_mide_contra_creditos_de_pasantia(db):
     assert 0.0 <= data["porcentaje_avance"] <= 1.0
 
 
+def test_tasas_de_aprobacion_y_reprobacion_no_superan_100(db):
+    from app.models import Carrera
+    from app.services.indicadores import aprobacion_por_materia, promedios_por_materia
+
+    carrera = db.query(Carrera).first()
+    aprobacion = aprobacion_por_materia(db, carrera.clave)
+    promedios = promedios_por_materia(db, carrera.clave)
+
+    for fila in aprobacion:
+        for campo in ("pct_aprobados", "pct_aprobados_ordinario"):
+            valor = fila[campo]
+            assert valor is None or 0.0 <= valor <= 1.0, (campo, fila["ciclo"], fila["materia_cve"], valor)
+
+    for fila in promedios:
+        for campo in ("pct_reprobacion", "pct_alumnos_con_calificacion_numerica"):
+            valor = fila[campo]
+            assert valor is None or 0.0 <= valor <= 1.0, (campo, fila["ciclo"], fila["materia_cve"], valor)
+
+    # Grupo con varias oportunidades por alumno (114 registros / 56 alumnos):
+    # antes de la corrección superaba 100%.
+    grupo = next(
+        (f for f in aprobacion if f["ciclo"] == "2010-2011/I" and f["materia_cve"] == "0000"),
+        None,
+    )
+    assert grupo is not None
+    assert grupo["pct_aprobados"] <= 1.0
+
+
 
 
 def test_exportar_tabla_genera_xlsx():

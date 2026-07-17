@@ -191,6 +191,28 @@ def import_alumnos(db: Session, contents: bytes, filename: str, carrera_clave: s
             if generacion is None:
                 raise ValueError("generacion inválida")
 
+            # La situación se valida ANTES de tocar la base: como determina
+            # retención, deserción, egreso y titulación, una situación mal escrita
+            # o ausente del catálogo debe rechazar la fila, no aceptarla con la
+            # situación en blanco.
+            situacion_clave = (row.get("situacion") or "").strip().upper()
+            situacion = None
+            if situacion_clave:
+                situacion = (
+                    db.query(SituacionAcademica)
+                    .filter(SituacionAcademica.clave == situacion_clave)
+                    .one_or_none()
+                )
+                if situacion is None:
+                    raise ValueError(f"situación desconocida: '{situacion_clave}'")
+
+            opcion_clave = (row.get("opcion_titulacion") or "").strip().upper()
+            modalidad = (
+                db.query(ModalidadTitulacion).filter(ModalidadTitulacion.clave == opcion_clave).one_or_none()
+                if opcion_clave
+                else None
+            )
+
             alumno = db.query(Alumno).filter(Alumno.cve_uaslp == cve_uaslp).one_or_none()
             es_nuevo_alumno = alumno is None
             if alumno is None:
@@ -200,20 +222,6 @@ def import_alumnos(db: Session, contents: bytes, filename: str, carrera_clave: s
             alumno.nombre = (row.get("nombre") or "").strip()
             alumno.sexo = (row.get("sexo") or "").strip()
             db.flush()
-
-            situacion_clave = (row.get("situacion") or "").strip().upper()
-            situacion = (
-                db.query(SituacionAcademica).filter(SituacionAcademica.clave == situacion_clave).one_or_none()
-                if situacion_clave
-                else None
-            )
-
-            opcion_clave = (row.get("opcion_titulacion") or "").strip().upper()
-            modalidad = (
-                db.query(ModalidadTitulacion).filter(ModalidadTitulacion.clave == opcion_clave).one_or_none()
-                if opcion_clave
-                else None
-            )
 
             trayectoria = (
                 db.query(Trayectoria)
@@ -236,15 +244,20 @@ def import_alumnos(db: Session, contents: bytes, filename: str, carrera_clave: s
             trayectoria.opcion_titulacion_id = modalidad.id if modalidad else None
             db.flush()
 
+            titulacion = (
+                db.query(Titulacion).filter(Titulacion.trayectoria_id == trayectoria.id).one_or_none()
+            )
             if situacion_clave == "TITULADO":
-                titulacion = (
-                    db.query(Titulacion).filter(Titulacion.trayectoria_id == trayectoria.id).one_or_none()
-                )
                 if titulacion is None:
                     titulacion = Titulacion(trayectoria_id=trayectoria.id)
                     db.add(titulacion)
                 titulacion.modalidad_id = modalidad.id if modalidad else None
                 titulacion.fecha = trayectoria.fecha_titulacion
+            elif titulacion is not None:
+                # El alumno dejó de estar titulado (corrección en una carga
+                # posterior): se elimina el registro para que no se siga contando
+                # como titulado en los indicadores y el Excel.
+                db.delete(titulacion)
 
             if es_nuevo_alumno or es_nueva_trayectoria:
                 insertadas += 1

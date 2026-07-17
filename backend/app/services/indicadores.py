@@ -187,16 +187,34 @@ def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
 
     salida = []
     for (ciclo, materia), regs in grupos.items():
-        inscritos = len({r.trayectoria_id for r in regs})
+        # Un alumno puede tener varias oportunidades (ordinario, extraordinario…)
+        # de la misma materia en el mismo ciclo. Los porcentajes se calculan sobre
+        # el resultado FINAL por alumno, no por intento, para que no superen 100%.
+        por_alumno: dict[int, list[RegistroKardex]] = defaultdict(list)
         por_tipo: dict[str, int] = defaultdict(int)
-        aprobados = 0
-        ordinarios = [r for r in regs if r.tipo_examen and r.tipo_examen.es_ordinario]
-        aprobados_ordinario = sum(1 for r in ordinarios if resultado_kardex(r) == "aprobado")
         for r in regs:
+            por_alumno[r.trayectoria_id].append(r)
             if r.tipo_examen:
                 por_tipo[r.tipo_examen.clave] += 1
-            if resultado_kardex(r) == "aprobado":
-                aprobados += 1
+
+        inscritos = len(por_alumno)
+        aprobados = sum(
+            1
+            for intentos in por_alumno.values()
+            if any(resultado_kardex(r) == "aprobado" for r in intentos)
+        )
+
+        # Aprobación en ordinario: entre los alumnos que presentaron examen
+        # ordinario, cuántos lo acreditaron en esa vía.
+        con_ordinario = 0
+        aprobados_ordinario = 0
+        for intentos in por_alumno.values():
+            ordinarios = [r for r in intentos if r.tipo_examen and r.tipo_examen.es_ordinario]
+            if not ordinarios:
+                continue
+            con_ordinario += 1
+            if any(resultado_kardex(r) == "aprobado" for r in ordinarios):
+                aprobados_ordinario += 1
 
         salida.append(
             {
@@ -205,7 +223,7 @@ def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
                 "materia_nombre": regs[0].materia.nombre,
                 "inscritos": inscritos,
                 "por_tipo_examen": dict(por_tipo),
-                "pct_aprobados_ordinario": (aprobados_ordinario / len(ordinarios)) if ordinarios else None,
+                "pct_aprobados_ordinario": (aprobados_ordinario / con_ordinario) if con_ordinario else None,
                 "pct_aprobados": (aprobados / inscritos) if inscritos else None,
             }
         )
@@ -230,15 +248,33 @@ def promedios_por_materia(db: Session, carrera_clave: str) -> list[dict]:
     salida = []
     for (ciclo, materia), regs in grupos.items():
         numericas = [r.calificacion_numerica for r in regs if r.calificacion_numerica is not None]
-        inscritos = len({r.trayectoria_id for r in regs})
-        reprobados = sum(1 for r in regs if resultado_kardex(r) == "reprobado")
+
+        # Porcentajes sobre el resultado FINAL por alumno (ver aprobacion_por_materia),
+        # para que no rebasen 100% cuando hay varias oportunidades por alumno.
+        por_alumno: dict[int, list[RegistroKardex]] = defaultdict(list)
+        for r in regs:
+            por_alumno[r.trayectoria_id].append(r)
+        inscritos = len(por_alumno)
+
+        con_numerica = sum(
+            1
+            for intentos in por_alumno.values()
+            if any(r.calificacion_numerica is not None for r in intentos)
+        )
+        # Reprobó = no acreditó en ninguna oportunidad y tuvo al menos un reprobado.
+        reprobados = 0
+        for intentos in por_alumno.values():
+            resultados = {resultado_kardex(r) for r in intentos}
+            if "aprobado" not in resultados and "reprobado" in resultados:
+                reprobados += 1
+
         salida.append(
             {
                 "ciclo": ciclo,
                 "materia_cve": materia,
                 "materia_nombre": regs[0].materia.nombre,
                 "promedio": (sum(numericas) / len(numericas)) if numericas else None,
-                "pct_alumnos_con_calificacion_numerica": (len(numericas) / inscritos) if inscritos else None,
+                "pct_alumnos_con_calificacion_numerica": (con_numerica / inscritos) if inscritos else None,
                 "pct_reprobacion": (reprobados / inscritos) if inscritos else None,
             }
         )
