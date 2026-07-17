@@ -166,7 +166,80 @@ def retencion_matriz(db: Session, carrera_clave: str) -> dict:
     }
 
 
-def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
+# Etiqueta de "ciclo" que se usa en las filas agregadas por materia.
+CICLO_AGREGADO = "Todos los ciclos"
+
+# Niveles de agrupación temporal soportados por las vistas por materia.
+AGRUPACIONES = ("ciclo", "anio", "materia")
+
+
+def _anio_de_ciclo(nombre: str) -> str:
+    """'2015-2016/I' -> '2015-2016'."""
+    return nombre.split("/", 1)[0]
+
+
+def _etiqueta_agrupacion(agrupar: str):
+    """Devuelve la función que mapea el nombre de ciclo a su etiqueta de grupo."""
+    if agrupar == "materia":
+        return lambda _nombre: CICLO_AGREGADO
+    if agrupar == "anio":
+        return _anio_de_ciclo
+    return lambda nombre: nombre  # "ciclo"
+
+
+def _reagrupar_conteos(conteos: list[dict], campos_suma: tuple[str, ...], etiqueta) -> list[dict]:
+    """Combina los conteos crudos por (ciclo, materia) al nivel temporal pedido
+    (ciclo, año o todos los ciclos), sumando los campos indicados. Combinar es
+    sumar conteos crudos, no promediar porcentajes: así la tasa resultante es la
+    ponderada por inscritos, correcta aunque los grupos tengan tamaños distintos.
+    """
+    agregado: dict[tuple[str, str], dict] = {}
+    for c in conteos:
+        clave = (etiqueta(c["ciclo"]), c["materia_cve"])
+        acc = agregado.get(clave)
+        if acc is None:
+            acc = {
+                "ciclo": clave[0],
+                "materia_cve": c["materia_cve"],
+                "materia_nombre": c["materia_nombre"],
+            }
+            for campo in campos_suma:
+                acc[campo] = 0
+            if "por_tipo" in c:
+                acc["por_tipo"] = defaultdict(int)
+            agregado[clave] = acc
+        for campo in campos_suma:
+            acc[campo] += c[campo]
+        if "por_tipo" in c:
+            for tipo, n in c["por_tipo"].items():
+                acc["por_tipo"][tipo] += n
+
+    for acc in agregado.values():
+        if "por_tipo" in acc:
+            acc["por_tipo"] = dict(acc["por_tipo"])
+    return list(agregado.values())
+
+
+def _filtrar_por_ciclos(registros: list, ciclos) -> list:
+    """Restringe los registros a los ciclos indicados (por nombre). Sin filtro
+    si ``ciclos`` es vacío/None."""
+    if not ciclos:
+        return registros
+    permitidos = set(ciclos)
+    return [r for r in registros if r.ciclo.nombre in permitidos]
+
+
+def aprobacion_por_materia(
+    db: Session, carrera_clave: str, agrupar: str = "ciclo", ciclos=None
+) -> list[dict]:
+    """Aprobación por materia. ``agrupar`` controla el nivel temporal:
+    ``"ciclo"`` (una fila por ciclo), ``"anio"`` (combina I+II del mismo año) o
+    ``"materia"`` (una sola fila con todos los ciclos). ``ciclos`` restringe el
+    cálculo a un subconjunto de ciclos (por nombre) antes de agrupar, para que el
+    recorte temporal también aplique a las vistas agregadas.
+    """
+    if agrupar not in AGRUPACIONES:
+        raise ValueError(f"agrupación inválida: '{agrupar}'")
     carrera = _carrera_o_404(db, carrera_clave)
     registros = (
         db.query(RegistroKardex)
@@ -180,12 +253,15 @@ def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
         .filter(Trayectoria.carrera_id == carrera.id)
         .all()
     )
+    registros = _filtrar_por_ciclos(registros, ciclos)
 
     grupos: dict[tuple[str, str], list[RegistroKardex]] = defaultdict(list)
     for r in registros:
         grupos[(r.ciclo.nombre, r.materia.cve_materia)].append(r)
 
-    salida = []
+    # Conteos crudos por (ciclo, materia): son la base tanto de la vista por
+    # ciclo como de la agregada por materia.
+    conteos = []
     for (ciclo, materia), regs in grupos.items():
         # Un alumno puede tener varias oportunidades (ordinario, extraordinario…)
         # de la misma materia en el mismo ciclo. Los porcentajes se calculan sobre
@@ -197,13 +273,11 @@ def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
             if r.tipo_examen:
                 por_tipo[r.tipo_examen.clave] += 1
 
-        inscritos = len(por_alumno)
         aprobados = sum(
             1
             for intentos in por_alumno.values()
             if any(resultado_kardex(r) == "aprobado" for r in intentos)
         )
-
         # Aprobación en ordinario: entre los alumnos que presentaron examen
         # ordinario, cuántos lo acreditaron en esa vía.
         con_ordinario = 0
@@ -216,22 +290,49 @@ def aprobacion_por_materia(db: Session, carrera_clave: str) -> list[dict]:
             if any(resultado_kardex(r) == "aprobado" for r in ordinarios):
                 aprobados_ordinario += 1
 
-        salida.append(
+        conteos.append(
             {
                 "ciclo": ciclo,
                 "materia_cve": materia,
                 "materia_nombre": regs[0].materia.nombre,
-                "inscritos": inscritos,
-                "por_tipo_examen": dict(por_tipo),
-                "pct_aprobados_ordinario": (aprobados_ordinario / con_ordinario) if con_ordinario else None,
-                "pct_aprobados": (aprobados / inscritos) if inscritos else None,
+                "inscritos": len(por_alumno),
+                "aprobados": aprobados,
+                "con_ordinario": con_ordinario,
+                "aprobados_ordinario": aprobados_ordinario,
+                "por_tipo": dict(por_tipo),
             }
         )
+
+    conteos = _reagrupar_conteos(
+        conteos,
+        ("inscritos", "aprobados", "con_ordinario", "aprobados_ordinario"),
+        _etiqueta_agrupacion(agrupar),
+    )
+
+    salida = [
+        {
+            "ciclo": c["ciclo"],
+            "materia_cve": c["materia_cve"],
+            "materia_nombre": c["materia_nombre"],
+            "inscritos": c["inscritos"],
+            "por_tipo_examen": c["por_tipo"],
+            "pct_aprobados_ordinario": (c["aprobados_ordinario"] / c["con_ordinario"]) if c["con_ordinario"] else None,
+            "pct_aprobados": (c["aprobados"] / c["inscritos"]) if c["inscritos"] else None,
+        }
+        for c in conteos
+    ]
     salida.sort(key=lambda d: (d["materia_cve"], d["ciclo"]))
     return salida
 
 
-def promedios_por_materia(db: Session, carrera_clave: str) -> list[dict]:
+def promedios_por_materia(
+    db: Session, carrera_clave: str, agrupar: str = "ciclo", ciclos=None
+) -> list[dict]:
+    """Promedio y reprobación por materia (ver ``agrupar`` y ``ciclos`` en
+    :func:`aprobacion_por_materia`). El promedio agregado es la media ponderada
+    real: suma de calificaciones / número de calificaciones."""
+    if agrupar not in AGRUPACIONES:
+        raise ValueError(f"agrupación inválida: '{agrupar}'")
     carrera = _carrera_o_404(db, carrera_clave)
     registros = (
         db.query(RegistroKardex)
@@ -240,12 +341,13 @@ def promedios_por_materia(db: Session, carrera_clave: str) -> list[dict]:
         .filter(Trayectoria.carrera_id == carrera.id)
         .all()
     )
+    registros = _filtrar_por_ciclos(registros, ciclos)
 
     grupos: dict[tuple[str, str], list[RegistroKardex]] = defaultdict(list)
     for r in registros:
         grupos[(r.ciclo.nombre, r.materia.cve_materia)].append(r)
 
-    salida = []
+    conteos = []
     for (ciclo, materia), regs in grupos.items():
         numericas = [r.calificacion_numerica for r in regs if r.calificacion_numerica is not None]
 
@@ -254,7 +356,6 @@ def promedios_por_materia(db: Session, carrera_clave: str) -> list[dict]:
         por_alumno: dict[int, list[RegistroKardex]] = defaultdict(list)
         for r in regs:
             por_alumno[r.trayectoria_id].append(r)
-        inscritos = len(por_alumno)
 
         con_numerica = sum(
             1
@@ -268,18 +369,54 @@ def promedios_por_materia(db: Session, carrera_clave: str) -> list[dict]:
             if "aprobado" not in resultados and "reprobado" in resultados:
                 reprobados += 1
 
-        salida.append(
+        conteos.append(
             {
                 "ciclo": ciclo,
                 "materia_cve": materia,
                 "materia_nombre": regs[0].materia.nombre,
-                "promedio": (sum(numericas) / len(numericas)) if numericas else None,
-                "pct_alumnos_con_calificacion_numerica": (con_numerica / inscritos) if inscritos else None,
-                "pct_reprobacion": (reprobados / inscritos) if inscritos else None,
+                "inscritos": len(por_alumno),
+                "con_numerica": con_numerica,
+                "reprobados": reprobados,
+                "suma_numericas": sum(numericas),
+                "n_numericas": len(numericas),
             }
         )
+
+    conteos = _reagrupar_conteos(
+        conteos,
+        ("inscritos", "con_numerica", "reprobados", "suma_numericas", "n_numericas"),
+        _etiqueta_agrupacion(agrupar),
+    )
+
+    salida = [
+        {
+            "ciclo": c["ciclo"],
+            "materia_cve": c["materia_cve"],
+            "materia_nombre": c["materia_nombre"],
+            "promedio": (c["suma_numericas"] / c["n_numericas"]) if c["n_numericas"] else None,
+            "pct_alumnos_con_calificacion_numerica": (c["con_numerica"] / c["inscritos"]) if c["inscritos"] else None,
+            "pct_reprobacion": (c["reprobados"] / c["inscritos"]) if c["inscritos"] else None,
+        }
+        for c in conteos
+    ]
     salida.sort(key=lambda d: (d["materia_cve"], d["ciclo"]))
     return salida
+
+
+def ciclos_de_carrera(db: Session, carrera_clave: str) -> list[str]:
+    """Nombres de los ciclos con actividad en la carrera, en orden cronológico.
+    Alimenta el selector de ciclos de la interfaz."""
+    carrera = _carrera_o_404(db, carrera_clave)
+    ciclos = (
+        db.query(CicloEscolar)
+        .join(RegistroKardex, RegistroKardex.ciclo_id == CicloEscolar.id)
+        .join(Trayectoria, RegistroKardex.trayectoria_id == Trayectoria.id)
+        .filter(Trayectoria.carrera_id == carrera.id)
+        .order_by(CicloEscolar.orden)
+        .distinct()
+        .all()
+    )
+    return [c.nombre for c in ciclos]
 
 
 def titulacion_por_cohorte(db: Session, carrera_clave: str) -> list[dict]:

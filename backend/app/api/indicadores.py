@@ -24,14 +24,37 @@ def retencion(carrera: str = Query(...), db: Session = Depends(get_db)):
     return _con_manejo_error(svc.retencion_matriz, db, carrera)
 
 
+@router.get("/indicadores/ciclos")
+def ciclos(carrera: str = Query(...), db: Session = Depends(get_db)):
+    return _con_manejo_error(svc.ciclos_de_carrera, db, carrera)
+
+
 @router.get("/indicadores/aprobacion")
-def aprobacion(carrera: str = Query(...), db: Session = Depends(get_db)):
-    return _con_manejo_error(svc.aprobacion_por_materia, db, carrera)
+def aprobacion(
+    carrera: str = Query(...),
+    agrupar: str = Query("ciclo", description="Nivel temporal: ciclo | anio | materia"),
+    ciclos: list[str] = Query(default=[], description="Restringe a estos ciclos (por nombre)"),
+    db: Session = Depends(get_db),
+):
+    try:
+        return svc.aprobacion_por_materia(db, carrera, agrupar=agrupar, ciclos=ciclos)
+    except ValueError as exc:
+        estado = 404 if "no encontrada" in str(exc) else 422
+        raise HTTPException(status_code=estado, detail=str(exc)) from exc
 
 
 @router.get("/indicadores/promedios-materia")
-def promedios_materia(carrera: str = Query(...), db: Session = Depends(get_db)):
-    return _con_manejo_error(svc.promedios_por_materia, db, carrera)
+def promedios_materia(
+    carrera: str = Query(...),
+    agrupar: str = Query("ciclo", description="Nivel temporal: ciclo | anio | materia"),
+    ciclos: list[str] = Query(default=[], description="Restringe a estos ciclos (por nombre)"),
+    db: Session = Depends(get_db),
+):
+    try:
+        return svc.promedios_por_materia(db, carrera, agrupar=agrupar, ciclos=ciclos)
+    except ValueError as exc:
+        estado = 404 if "no encontrada" in str(exc) else 422
+        raise HTTPException(status_code=estado, detail=str(exc)) from exc
 
 
 @router.get("/indicadores/titulacion")

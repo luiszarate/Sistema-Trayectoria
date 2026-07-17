@@ -43,6 +43,16 @@ export function excelExportUrl(carrera: string): string {
   return `${BASE_URL}/exportaciones/excel?carrera=${encodeURIComponent(carrera)}`;
 }
 
+export type Agrupacion = "ciclo" | "anio" | "materia";
+
+/** Construye la query de las vistas por materia (aprobación / promedios) con
+ * el nivel de agrupación y el recorte de ciclos aplicados en el backend. */
+export function materiaQuery(carrera: string, agrupar: Agrupacion, ciclos: string[]): string {
+  const params = new URLSearchParams({ carrera, agrupar });
+  for (const c of ciclos) params.append("ciclos", c);
+  return params.toString();
+}
+
 export type CeldaExport = string | number | null;
 
 export interface TablaExport {
