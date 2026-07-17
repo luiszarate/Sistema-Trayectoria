@@ -3,12 +3,33 @@ import { get } from "../api/client";
 import type { AprobacionMateria } from "../api/types";
 import { useCarrera } from "../context/CarreraContext";
 import { pct } from "../format";
+import DataTable from "../components/DataTable";
+import type { Column } from "../components/DataTable";
+
+const columnas: Column<AprobacionMateria>[] = [
+  { key: "ciclo", header: "Ciclo", value: (f) => f.ciclo, filter: "select" },
+  { key: "clave", header: "Clave", value: (f) => f.materia_cve, filter: "text" },
+  { key: "materia", header: "Materia", value: (f) => f.materia_nombre, filter: "select" },
+  { key: "inscritos", header: "Inscritos", value: (f) => f.inscritos, align: "right" },
+  {
+    key: "pct_ord",
+    header: "% Aprobados ordinario",
+    value: (f) => f.pct_aprobados_ordinario,
+    render: (f) => pct(f.pct_aprobados_ordinario),
+    align: "right",
+  },
+  {
+    key: "pct_aprob",
+    header: "% Aprobados",
+    value: (f) => f.pct_aprobados,
+    render: (f) => pct(f.pct_aprobados),
+    align: "right",
+  },
+];
 
 export default function AprobacionPage() {
   const { carreraActual } = useCarrera();
   const [filas, setFilas] = useState<AprobacionMateria[]>([]);
-  const [materia, setMateria] = useState("");
-  const [ciclo, setCiclo] = useState("");
 
   useEffect(() => {
     if (!carreraActual) return;
@@ -17,51 +38,16 @@ export default function AprobacionPage() {
 
   if (!carreraActual) return <p>Selecciona una carrera.</p>;
 
-  const visibles = filas.filter(
-    (f) =>
-      (!materia || f.materia_cve.includes(materia) || f.materia_nombre.toUpperCase().includes(materia.toUpperCase())) &&
-      (!ciclo || f.ciclo.includes(ciclo))
-  );
-
   return (
     <div>
       <h2>Aprobación por materia</h2>
-      <div className="filtros">
-        <label>
-          Materia
-          <input value={materia} onChange={(e) => setMateria(e.target.value)} placeholder="clave o nombre" />
-        </label>
-        <label>
-          Ciclo
-          <input value={ciclo} onChange={(e) => setCiclo(e.target.value)} placeholder="p. ej. 2020-2021" />
-        </label>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Ciclo</th>
-              <th>Clave</th>
-              <th>Materia</th>
-              <th>Inscritos</th>
-              <th>% Aprobados ordinario</th>
-              <th>% Aprobados</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibles.map((f, i) => (
-              <tr key={i}>
-                <td>{f.ciclo}</td>
-                <td>{f.materia_cve}</td>
-                <td>{f.materia_nombre}</td>
-                <td>{f.inscritos}</td>
-                <td>{pct(f.pct_aprobados_ordinario)}</td>
-                <td>{pct(f.pct_aprobados)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columnas}
+        rows={filas}
+        exportSheetName="Aprobación"
+        exportFileName="aprobacion"
+        initialSort={{ key: "clave", dir: "asc" }}
+      />
     </div>
   );
 }

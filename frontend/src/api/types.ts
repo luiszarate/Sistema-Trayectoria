@@ -70,6 +70,7 @@ export interface TrayectoriaOut {
   situacion: string | null;
   tutor: string;
   creditos_plan: number;
+  creditos_requeridos: number;
   creditos_acreditados: number;
   porcentaje_avance: number;
   semestres_cursados: number;

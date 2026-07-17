@@ -44,6 +44,7 @@ class TrayectoriaOut(BaseModel):
     situacion: str | None = None
     tutor: str
     creditos_plan: int
+    creditos_requeridos: int
     creditos_acreditados: int
     porcentaje_avance: float
     semestres_cursados: int

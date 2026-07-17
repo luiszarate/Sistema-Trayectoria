@@ -3,6 +3,67 @@ import { get } from "../api/client";
 import type { ResumenCohorte } from "../api/types";
 import { useCarrera } from "../context/CarreraContext";
 import { pct } from "../format";
+import DataTable from "../components/DataTable";
+import type { Column } from "../components/DataTable";
+
+const columnas: Column<ResumenCohorte>[] = [
+  { key: "cohorte", header: "Cohorte", value: (f) => f.cohorte, filter: "select" },
+  { key: "alumnos", header: "Alumnos", value: (f) => f.alumnos_cohorte, align: "right" },
+  { key: "abandono", header: "Abandono", value: (f) => f.abandono, align: "right" },
+  { key: "retencion", header: "Retención", value: (f) => f.retencion, render: (f) => pct(f.retencion), align: "right" },
+  { key: "titulados", header: "Titulados", value: (f) => f.titulados, align: "right" },
+  {
+    key: "tit_cohorte",
+    header: "Tit. % cohorte",
+    value: (f) => f.titulados_pct_cohorte,
+    render: (f) => pct(f.titulados_pct_cohorte),
+    align: "right",
+  },
+  {
+    key: "tit_ret",
+    header: "Tit. % retenidos",
+    value: (f) => f.titulados_pct_retenidos,
+    render: (f) => pct(f.titulados_pct_retenidos),
+    align: "right",
+  },
+  { key: "pasantes", header: "Pasantes", value: (f) => f.pasantes, align: "right" },
+  { key: "egresados", header: "Egresados", value: (f) => f.egresados, align: "right" },
+  {
+    key: "egr_cohorte",
+    header: "Egr. % cohorte",
+    value: (f) => f.egresados_pct_cohorte,
+    render: (f) => pct(f.egresados_pct_cohorte),
+    align: "right",
+  },
+  {
+    key: "egr_ret",
+    header: "Egr. % retenidos",
+    value: (f) => f.egresados_pct_retenidos,
+    render: (f) => pct(f.egresados_pct_retenidos),
+    align: "right",
+  },
+  {
+    key: "reprob_0",
+    header: "Reprob. 0",
+    value: (f) => f.reprobadas_0,
+    render: (f) => `${f.reprobadas_0} (${pct(f.reprobadas_0_pct)})`,
+    align: "right",
+  },
+  {
+    key: "reprob_1a3",
+    header: "Reprob. 1-3",
+    value: (f) => f.reprobadas_1a3,
+    render: (f) => `${f.reprobadas_1a3} (${pct(f.reprobadas_1a3_pct)})`,
+    align: "right",
+  },
+  {
+    key: "reprob_4mas",
+    header: "Reprob. 4+",
+    value: (f) => f.reprobadas_4mas,
+    render: (f) => `${f.reprobadas_4mas} (${pct(f.reprobadas_4mas_pct)})`,
+    align: "right",
+  },
+];
 
 export default function ResumenCohortePage() {
   const { carreraActual } = useCarrera();
@@ -18,48 +79,13 @@ export default function ResumenCohortePage() {
   return (
     <div>
       <h2>Resumen por cohorte</h2>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Cohorte</th>
-              <th>Alumnos</th>
-              <th>Abandono</th>
-              <th>Retención</th>
-              <th>Titulados</th>
-              <th>Tit. % cohorte</th>
-              <th>Tit. % retenidos</th>
-              <th>Pasantes</th>
-              <th>Egresados</th>
-              <th>Egr. % cohorte</th>
-              <th>Egr. % retenidos</th>
-              <th>Reprob. 0</th>
-              <th>Reprob. 1-3</th>
-              <th>Reprob. 4+</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((f) => (
-              <tr key={f.cohorte}>
-                <td>{f.cohorte}</td>
-                <td>{f.alumnos_cohorte}</td>
-                <td>{f.abandono}</td>
-                <td>{pct(f.retencion)}</td>
-                <td>{f.titulados}</td>
-                <td>{pct(f.titulados_pct_cohorte)}</td>
-                <td>{pct(f.titulados_pct_retenidos)}</td>
-                <td>{f.pasantes}</td>
-                <td>{f.egresados}</td>
-                <td>{pct(f.egresados_pct_cohorte)}</td>
-                <td>{pct(f.egresados_pct_retenidos)}</td>
-                <td>{f.reprobadas_0} ({pct(f.reprobadas_0_pct)})</td>
-                <td>{f.reprobadas_1a3} ({pct(f.reprobadas_1a3_pct)})</td>
-                <td>{f.reprobadas_4mas} ({pct(f.reprobadas_4mas_pct)})</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columnas}
+        rows={filas}
+        exportSheetName="Resumen"
+        exportFileName="resumen-cohorte"
+        initialSort={{ key: "cohorte", dir: "asc" }}
+      />
     </div>
   );
 }

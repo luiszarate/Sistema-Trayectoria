@@ -42,3 +42,35 @@ export async function uploadFile<T>(
 export function excelExportUrl(carrera: string): string {
   return `${BASE_URL}/exportaciones/excel?carrera=${encodeURIComponent(carrera)}`;
 }
+
+export type CeldaExport = string | number | null;
+
+export interface TablaExport {
+  nombre_hoja: string;
+  nombre_archivo: string;
+  columnas: string[];
+  filas: CeldaExport[][];
+}
+
+/** Envía la vista de tabla actual (ya filtrada y ordenada) al backend y dispara
+ * la descarga del .xlsx resultante. */
+export async function exportTablaExcel(tabla: TablaExport): Promise<void> {
+  const res = await fetch(`${BASE_URL}/exportaciones/tabla`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tabla),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement("a");
+  enlace.href = url;
+  enlace.download = `${tabla.nombre_archivo}.xlsx`;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+}

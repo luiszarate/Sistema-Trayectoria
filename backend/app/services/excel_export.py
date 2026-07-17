@@ -105,6 +105,24 @@ def _hoja_kardex(wb: Workbook, db: Session, carrera: Carrera) -> None:
             )
 
 
+def generar_tabla(nombre_hoja: str, columnas: list[str], filas: list[list]) -> io.BytesIO:
+    """Genera un .xlsx de una sola hoja a partir de la vista de tabla que el
+    usuario tiene en pantalla (encabezados + filas ya filtradas y ordenadas).
+    """
+    wb = Workbook()
+    ws = wb.active
+    # openpyxl limita el título de la hoja a 31 caracteres y prohíbe algunos símbolos.
+    ws.title = (nombre_hoja or "Datos")[:31].translate({ord(c): None for c in r"[]:*?/\\"}) or "Datos"
+    ws.append(columnas)
+    for fila in filas:
+        ws.append(list(fila))
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 def generar_libro(db: Session, carrera_clave: str) -> io.BytesIO:
     carrera = db.query(Carrera).filter(Carrera.clave == carrera_clave.upper()).one_or_none()
     if carrera is None:

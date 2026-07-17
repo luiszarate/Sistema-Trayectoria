@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { get } from "../api/client";
 import type { EgresoCohorte } from "../api/types";
 import { useCarrera } from "../context/CarreraContext";
 import { num } from "../format";
+import DataTable from "../components/DataTable";
+import type { Column } from "../components/DataTable";
 
 export default function EgresoPage() {
   const { carreraActual } = useCarrera();
@@ -13,39 +15,40 @@ export default function EgresoPage() {
     get<EgresoCohorte[]>(`/indicadores/egreso?carrera=${carreraActual}`).then(setFilas);
   }, [carreraActual]);
 
-  if (!carreraActual) return <p>Selecciona una carrera.</p>;
+  const columnas = useMemo<Column<EgresoCohorte>[]>(() => {
+    const semestres = Array.from(new Set(filas.flatMap((f) => Object.keys(f.distribucion)))).sort(
+      (a, b) => Number(a) - Number(b)
+    );
+    return [
+      { key: "cohorte", header: "Cohorte", value: (f) => f.cohorte, filter: "select" },
+      {
+        key: "promedio",
+        header: "Promedio de semestres",
+        value: (f) => f.promedio_semestres,
+        render: (f) => num(f.promedio_semestres, 2),
+        align: "right",
+      },
+      ...semestres.map<Column<EgresoCohorte>>((s) => ({
+        key: `sem:${s}`,
+        header: `${s} sem.`,
+        value: (f) => f.distribucion[s] ?? 0,
+        align: "right",
+      })),
+    ];
+  }, [filas]);
 
-  const semestres = Array.from(
-    new Set(filas.flatMap((f) => Object.keys(f.distribucion)))
-  ).sort((a, b) => Number(a) - Number(b));
+  if (!carreraActual) return <p>Selecciona una carrera.</p>;
 
   return (
     <div>
       <h2>Egreso — semestres para egresar</h2>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Cohorte</th>
-              <th>Promedio de semestres</th>
-              {semestres.map((s) => (
-                <th key={s}>{s} sem.</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((f) => (
-              <tr key={f.cohorte}>
-                <td>{f.cohorte}</td>
-                <td>{num(f.promedio_semestres, 2)}</td>
-                {semestres.map((s) => (
-                  <td key={s}>{f.distribucion[s] ?? 0}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columnas}
+        rows={filas}
+        exportSheetName="Egreso"
+        exportFileName="egreso"
+        initialSort={{ key: "cohorte", dir: "asc" }}
+      />
     </div>
   );
 }

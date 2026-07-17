@@ -35,13 +35,13 @@ export default function TrayectoriaPage() {
         </div>
         <div className="kpi-card">
           <div className="valor">
-            {data.creditos_acreditados}/{data.creditos_plan || "—"}
+            {data.creditos_acreditados}/{data.creditos_requeridos || "—"}
           </div>
-          <div className="etiqueta">Créditos acreditados</div>
+          <div className="etiqueta">Créditos acreditados (requeridos para pasantía)</div>
         </div>
         <div className="kpi-card">
           <div className="valor">{pct(data.porcentaje_avance)}</div>
-          <div className="etiqueta">Avance del plan</div>
+          <div className="etiqueta">Avance a pasantía</div>
           <div className="progress-bar">
             <div style={{ width: `${Math.min(data.porcentaje_avance * 100, 100)}%` }} />
           </div>
